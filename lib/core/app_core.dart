@@ -7,6 +7,8 @@ import '../services/push/push_service.dart';
 import '../services/version/version_service.dart';
 import '../services/rate/rate_service.dart';
 import '../services/support/support_service.dart';
+import '../services/remote_config/remote_config_service.dart';
+import '../services/deep_link/deep_link_service.dart';
 
 class AppCore {
   AppCore._();
@@ -15,7 +17,7 @@ class AppCore {
   static bool _initialized = false;
 
   static AppConfig get config {
-    assert(_initialized, 'AppCore.bootstrap() must be called before accessing config');
+    assert(_initialized, 'AppCore.bootstrap() must be called first.');
     return _config!;
   }
 
@@ -54,6 +56,16 @@ class AppCore {
     return config.support!;
   }
 
+  static RemoteConfigService get remoteConfig {
+    assert(config.remoteConfig != null, 'RemoteConfigService not provided in AppConfig');
+    return config.remoteConfig!;
+  }
+
+  static DeepLinkService get deepLink {
+    assert(config.deepLink != null, 'DeepLinkService not provided in AppConfig');
+    return config.deepLink!;
+  }
+
   static AppEventBus get events => AppEventBus.instance;
 
   static Future<void> bootstrap(AppConfig config) async {
@@ -66,6 +78,8 @@ class AppCore {
       if (config.push != null) config.push!.init(),
       if (config.version != null) config.version!.init(),
       if (config.rate != null) config.rate!.init(),
+      if (config.remoteConfig != null) config.remoteConfig!.init(),
+      if (config.deepLink != null) config.deepLink!.init(),
     ]);
 
     _initialized = true;

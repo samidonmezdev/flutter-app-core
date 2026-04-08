@@ -1,6 +1,6 @@
 # app_core
 
-A comprehensive Flutter SDK that consolidates all essential app services — Ads, In-App Purchases, Analytics, Push Notifications, Version Management, Rate Dialog, and Support — into a single, unified package.
+A comprehensive Flutter SDK that consolidates all essential app services — Ads, In-App Purchases, Analytics, Push Notifications, Remote Config, Deep Links, Version Management, Rate Dialog, and Support — into a single, unified package.
 
 ---
 
@@ -17,8 +17,11 @@ A comprehensive Flutter SDK that consolidates all essential app services — Ads
 - [Services](#services)
   - [Ads — AdMob](#ads--admob)
   - [IAP — Adapty](#iap--adapty)
+  - [IAP — RevenueCat](#iap--revenuecat)
   - [Analytics — Firebase](#analytics--firebase)
   - [Push — FCM](#push--fcm)
+  - [Remote Config](#remote-config)
+  - [Deep Links](#deep-links)
   - [Version Check](#version-check)
   - [Rate Dialog](#rate-dialog)
   - [Support & Privacy](#support--privacy)
@@ -35,8 +38,11 @@ A comprehensive Flutter SDK that consolidates all essential app services — Ads
 |---|---|---|
 | Ads | Google AdMob | Interstitial, Rewarded, Banner |
 | IAP | Adapty | Purchase, Restore, Premium stream |
+| IAP | RevenueCat | Purchase, Restore, Entitlement check |
 | Analytics | Firebase Analytics | Events, User ID, User properties |
 | Push | Firebase Cloud Messaging | Token, Topics, Foreground messages |
+| Remote Config | Firebase Remote Config | Feature flags, A/B values, runtime config |
+| Deep Links | app_links | Cold start + foreground URI stream |
 | Version | package_info_plus | Force update, Store redirect |
 | Rate | in_app_review | Native review dialog, launch tracking |
 | Support | url_launcher | Email, Privacy Policy, Terms of Service |
@@ -60,6 +66,8 @@ lib/
 │   ├── iap/iap_service.dart
 │   ├── analytics/analytics_service.dart
 │   ├── push/push_service.dart
+│   ├── remote_config/remote_config_service.dart
+│   ├── deep_link/deep_link_service.dart
 │   ├── version/version_service.dart
 │   ├── rate/rate_service.dart
 │   └── support/support_service.dart
@@ -67,8 +75,11 @@ lib/
 └── implementations/               ← concrete implementations
     ├── admob/admob_ads_service.dart
     ├── adapty/adapty_iap_service.dart
+    ├── revenuecat/revenuecat_iap_service.dart
     ├── firebase/firebase_analytics_service.dart
     ├── fcm/fcm_push_service.dart
+    ├── remote_config/firebase_remote_config_service.dart
+    ├── deep_link/app_links_deep_link_service.dart
     ├── version/default_version_service.dart
     ├── rate/default_rate_service.dart
     └── support/default_support_service.dart
@@ -235,6 +246,16 @@ void main() async {
       privacyUrl: 'https://example.com/privacy',
       termsUrl: 'https://example.com/terms',
     ),
+
+    remoteConfig: FirebaseRemoteConfigService(
+      fetchInterval: Duration(hours: 1),
+      defaults: {
+        'show_ads': true,
+        'max_free_levels': 10,
+      },
+    ),
+
+    deepLink: AppLinksDeepLinkService(),
   ));
 
   runApp(const MyApp());
@@ -308,6 +329,39 @@ AppCore.iap.premiumStream.listen((isPremium) {
 
 ---
 
+### IAP — RevenueCat
+
+Use `RevenueCatIAPService` as a drop-in alternative to Adapty.
+
+```dart
+iap: RevenueCatIAPService(
+  apiKey: 'appl_xxxxxxxxxxxxxxxx', // or 'goog_xxx' for Android
+  entitlementId: 'premium',        // matches your RevenueCat dashboard
+),
+```
+
+```dart
+// Purchase using the product identifier from your offering
+await AppCore.iap.purchase('premium_monthly');
+
+// Restore purchases
+await AppCore.iap.restore();
+
+// Check premium status
+if (AppCore.iap.isPremium()) {
+  unlockContent();
+}
+
+// React to changes in real time
+AppCore.iap.premiumStream.listen((isPremium) {
+  setState(() => _isPremium = isPremium);
+});
+```
+
+> **Setup:** Create an Offering in [RevenueCat dashboard](https://app.revenuecat.com), then pass the product identifier to `purchase()`.
+
+---
+
 ### Analytics — Firebase
 
 ```dart
@@ -360,6 +414,100 @@ AppCore.push.onMessage.listen((message) {
 ```
 
 > **Note:** Background and terminated-state messages require a top-level `@pragma('vm:entry-point')` handler registered before `bootstrap()`. See the [Bootstrap](#bootstrap) section above.
+
+---
+
+### Remote Config
+
+```dart
+remoteConfig: FirebaseRemoteConfigService(
+  fetchInterval: Duration(hours: 1),
+  defaults: {
+    'show_banner': true,
+    'max_free_levels': 10,
+    'welcome_message': 'Hello!',
+  },
+),
+```
+
+```dart
+// Read values — returns default if key not set remotely
+final showBanner = AppCore.remoteConfig.getBool('show_banner');
+final maxLevels  = AppCore.remoteConfig.getInt('max_free_levels');
+final message    = AppCore.remoteConfig.getString('welcome_message');
+final price      = AppCore.remoteConfig.getDouble('sale_price');
+
+// Force a fresh fetch at runtime (e.g. on app resume)
+await AppCore.remoteConfig.fetch();
+
+// Get all key-value pairs
+final all = AppCore.remoteConfig.getAll();
+```
+
+> Fetch interval is **1 hour minimum** on production. During development, set `fetchInterval: Duration.zero` to always get fresh values.
+
+---
+
+### Deep Links
+
+```dart
+deepLink: AppLinksDeepLinkService(),
+```
+
+```dart
+// In your root widget initState — handle cold start link
+final initialUri = await AppCore.deepLink.getInitialLink();
+if (initialUri != null) {
+  handleDeepLink(initialUri);
+}
+
+// Listen for links while app is running
+AppCore.deepLink.onLink.listen((uri) {
+  handleDeepLink(uri);
+});
+
+void handleDeepLink(Uri uri) {
+  // e.g. myapp://product/123  or  https://example.com/promo
+  switch (uri.path) {
+    case '/product':
+      final id = uri.queryParameters['id'];
+      navigateTo(ProductPage(id: id));
+      break;
+    case '/promo':
+      AppCore.analytics.logEvent('promo_link_opened');
+      break;
+  }
+}
+
+// Clean up when done
+AppCore.deepLink.dispose();
+```
+
+**Android setup** — add intent-filter to `AndroidManifest.xml`:
+
+```xml
+<intent-filter android:autoVerify="true">
+  <action android:name="android.intent.action.VIEW" />
+  <category android:name="android.intent.category.DEFAULT" />
+  <category android:name="android.intent.category.BROWSABLE" />
+  <data android:scheme="https" android:host="example.com" />
+  <data android:scheme="myapp" />
+</intent-filter>
+```
+
+**iOS setup** — add to `ios/Runner/Info.plist`:
+
+```xml
+<key>CFBundleURLTypes</key>
+<array>
+  <dict>
+    <key>CFBundleURLSchemes</key>
+    <array>
+      <string>myapp</string>
+    </array>
+  </dict>
+</array>
+```
 
 ---
 

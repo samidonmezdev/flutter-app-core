@@ -5,6 +5,8 @@ import '../services/push/push_service.dart';
 import '../services/version/version_service.dart';
 import '../services/rate/rate_service.dart';
 import '../services/support/support_service.dart';
+import '../services/remote_config/remote_config_service.dart';
+import '../services/deep_link/deep_link_service.dart';
 
 class AppConfig {
   final String privacyUrl;
@@ -17,6 +19,8 @@ class AppConfig {
   final VersionService? version;
   final RateService? rate;
   final SupportService? support;
+  final RemoteConfigService? remoteConfig;
+  final DeepLinkService? deepLink;
 
   const AppConfig({
     required this.privacyUrl,
@@ -29,5 +33,7 @@ class AppConfig {
     this.version,
     this.rate,
     this.support,
+    this.remoteConfig,
+    this.deepLink,
   });
 }
